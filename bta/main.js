@@ -50,12 +50,12 @@
       this.gl.useProgram(p);
 
       this.gl.bindBuffer(this.gl.ARRAY_BUFFER, this.vertexBuffer);
-      this.gl.bufferData(this.gl.ARRAY_BUFFER, new Float32Array(model.getVertexes(this.camera)), this.gl.STATIC_DRAW);
+      this.gl.bufferData(this.gl.ARRAY_BUFFER, new Float32Array(model.getVertexes()), this.gl.STATIC_DRAW);
       this.gl.bindBuffer(this.gl.ARRAY_BUFFER, null);
 
-      this.gl.bindBuffer(this.gl.ARRAY_BUFFER, this.normalBuffer);
-      this.gl.bufferData(this.gl.ARRAY_BUFFER, new Float32Array(model.normals), this.gl.STATIC_DRAW);
-      this.gl.bindBuffer(this.gl.ARRAY_BUFFER, null);
+      // this.gl.bindBuffer(this.gl.ARRAY_BUFFER, this.normalBuffer);
+      // this.gl.bufferData(this.gl.ARRAY_BUFFER, new Float32Array(model.normals), this.gl.STATIC_DRAW);
+      // this.gl.bindBuffer(this.gl.ARRAY_BUFFER, null);
 
       this.gl.bindBuffer(this.gl.ELEMENT_ARRAY_BUFFER, this.indexBuffer);
       this.gl.bufferData(this.gl.ELEMENT_ARRAY_BUFFER, new Uint16Array(model.getIndexes()), this.gl.STATIC_DRAW);
@@ -99,7 +99,7 @@
       this.gl.viewport(0, 0, this.canvas.width, this.canvas.height);
       this.world.forEach(obj => {
         obj.update(this);
-        this.gl.bindBuffer(this.gl.ARRAY_BUFFER, this.normalBuffer);
+        //this.gl.bindBuffer(this.gl.ARRAY_BUFFER, this.normalBuffer);
         this.gl.bindBuffer(this.gl.ARRAY_BUFFER, this.vertexBuffer);
         this.gl.bindBuffer(this.gl.ELEMENT_ARRAY_BUFFER, this.indexBuffer);
 
@@ -107,12 +107,12 @@
         this.gl.vertexAttribPointer(coord, 3, this.gl.FLOAT, false, 0, 0);
         this.gl.enableVertexAttribArray(coord);
 
-        let normals = this.gl.getAttribLocation(obj.program, "normals");
-        this.gl.vertexAttribPointer(normals, 3, this.gl.FLOAT, false, 0, 0);
-        this.gl.enableVertexAttribArray(normals);
+        // let normals = this.gl.getAttribLocation(obj.program, "normals");
+        // this.gl.vertexAttribPointer(normals, 3, this.gl.FLOAT, false, 0, 0);
+        // this.gl.enableVertexAttribArray(normals);
 
-        let lightDir = this.gl.getUniformLocation(obj.program, "lightDir");
-        this.gl.uniform3f(lightDir, this.camera.dir.x, this.camera.dir.y, this.camera.dir.z);
+        // let lightDir = this.gl.getUniformLocation(obj.program, "lightDir");
+        // this.gl.uniform3f(lightDir, this.camera.dir.x, this.camera.dir.y, this.camera.dir.z);
 
         this.gl.drawElements(this.gl.TRIANGLES, obj.indexes.length, this.gl.UNSIGNED_SHORT, 0);  
       });
