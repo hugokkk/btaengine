@@ -1,16 +1,18 @@
 (function() {
-  this.BTA = function(){
+  BTA = function(){
     this.canvas = null;
     this.shaders = [];
     this.vertexBuffer = null;
     this.indexBuffer = null;
+    this.normalBuffer = null;
     this.gl = null;
     this.frame = 0;
     this.fps = 30;
     this.updateLoop = null;
     this.updateBinder = [];
     this.world = [];
-    this.onShadersLoad = ()=>{};;
+    this.onShadersLoad = ()=>{};
+    this.camera = new camera();
 
     this.setCanvas = function(canvas){
       this.canvas = canvas;
@@ -20,6 +22,7 @@
       this.gl.viewport(0, 0, this.canvas.width, this.canvas.height);
       this.vertexBuffer = this.gl.createBuffer();
       this.indexBuffer = this.gl.createBuffer();
+      this.normalBuffer = this.gl.createBuffer();
       this.updateLoop = setInterval(() => this.update(), 1000/this.fps);
     }
 
@@ -27,9 +30,6 @@
       this.frame += 1;
       this.updateBinder.forEach(update => {
         update(this);
-      });
-      this.world.forEach(obj => {
-        obj.update(this);
       });
       this.drawScene();
     }
@@ -50,7 +50,11 @@
       this.gl.useProgram(p);
 
       this.gl.bindBuffer(this.gl.ARRAY_BUFFER, this.vertexBuffer);
-      this.gl.bufferData(this.gl.ARRAY_BUFFER, new Float32Array(model.getVertexes()), this.gl.STATIC_DRAW);
+      this.gl.bufferData(this.gl.ARRAY_BUFFER, new Float32Array(model.getVertexes(this.camera)), this.gl.STATIC_DRAW);
+      this.gl.bindBuffer(this.gl.ARRAY_BUFFER, null);
+
+      this.gl.bindBuffer(this.gl.ARRAY_BUFFER, this.normalBuffer);
+      this.gl.bufferData(this.gl.ARRAY_BUFFER, new Float32Array(model.normals), this.gl.STATIC_DRAW);
       this.gl.bindBuffer(this.gl.ARRAY_BUFFER, null);
 
       this.gl.bindBuffer(this.gl.ELEMENT_ARRAY_BUFFER, this.indexBuffer);
@@ -94,130 +98,219 @@
       this.gl.clear(this.gl.COLOR_BUFFER_BIT);
       this.gl.viewport(0, 0, this.canvas.width, this.canvas.height);
       this.world.forEach(obj => {
+        obj.update(this);
+        this.gl.bindBuffer(this.gl.ARRAY_BUFFER, this.normalBuffer);
         this.gl.bindBuffer(this.gl.ARRAY_BUFFER, this.vertexBuffer);
         this.gl.bindBuffer(this.gl.ELEMENT_ARRAY_BUFFER, this.indexBuffer);
+
         let coord = this.gl.getAttribLocation(obj.program, "coordinates");
         this.gl.vertexAttribPointer(coord, 3, this.gl.FLOAT, false, 0, 0);
         this.gl.enableVertexAttribArray(coord);
+
+        let normals = this.gl.getAttribLocation(obj.program, "normals");
+        this.gl.vertexAttribPointer(normals, 3, this.gl.FLOAT, false, 0, 0);
+        this.gl.enableVertexAttribArray(normals);
+
+        let lightDir = this.gl.getUniformLocation(obj.program, "lightDir");
+        this.gl.uniform3f(lightDir, this.camera.dir.x, this.camera.dir.y, this.camera.dir.z);
+
         this.gl.drawElements(this.gl.TRIANGLES, obj.indexes.length, this.gl.UNSIGNED_SHORT, 0);  
       });
     }
+  }
 
-    this.model = function(bta){
-      this.vertexes = [];
-      this.indexes = [];
-      this.pos = new bta.vector();
-      this.scale = new bta.vector(0.2, 0.2, 0.2);
-      this.rot = new bta.vector();
-      this.program;
-      this.onLoad = ()=>{};
+  this.model = function(){
+    this.vertexes = [];
+    this.indexes = [];
+    this.pos = new vector();
+    this.scale = new vector(0.2, 0.2, 0.2);
+    this.rot = new vector();
+    this.program;
+    this.normals;
+    this.onLoad = ()=>{};
 
-      this.loadObj = url => {
-        $.ajax(url, {complete: data => {
-          this.readObj(data.responseText);
-          this.onLoad();
-        }});
+    this.loadObj = url => {
+      $.ajax(url, {complete: data => {
+        this.readObj(data.responseText);
+        this.generateNormals();
+        this.onLoad();
+      }});
+    }
+
+    this.getVertexes = camera => {
+      while(this.rot.x >= Math.PI*2){
+        this.rot.x -= Math.PI*2;
       }
-
-      this.getVertexes = () => {
-        while(this.rot.x >= Math.PI*2){
-          this.rot.x -= Math.PI*2;
-        }
-        while(this.rot.x <= -Math.PI){
-          this.rot.x += Math.PI*2;
-        }
-        while(this.rot.y >= Math.PI){
-          this.rot.y -= Math.PI*2;
-        }
-        while(this.rot.y <= -Math.PI){
-          this.rot.y += Math.PI*2;
-        }
-        while(this.rot.z >= Math.PI){
-          this.rot.z -= Math.PI*2;
-        }
-        while(this.rot.z <= -Math.PI){
-          this.rot.z += Math.PI*2;
-        }
-        let v = [].concat(this.vertexes);
-        for(let i = 0; i < v.length; i += 3){
-          // APPLY SCALE
-          v[i+0] *= this.scale.x;
-          v[i+1] *= this.scale.y;
-          v[i+2] *= this.scale.z;
-          // APPLY ROTATION
-          let d, ang;
-          // ROTATION X
-          d = Math.sqrt(Math.pow(v[i+1], 2) + Math.pow(v[i+2], 2));
-          ang = Math.atan2(v[i+1], v[i+2]);
-          ang += this.rot.x;
-          v[i+1] = d*Math.cos(ang);
-          v[i+2] = d*Math.sin(ang);
-          // ROTATION Y
-          d = Math.sqrt(Math.pow(v[i+2], 2) + Math.pow(v[i+0], 2));
-          ang = Math.atan2(v[i+0], v[i+2]);
-          ang += this.rot.y;
-          v[i+2] = d*Math.cos(ang);
-          v[i+0] = d*Math.sin(ang);
-          // ROTATION Z
-          d = Math.sqrt(Math.pow(v[i+1], 2) + Math.pow(v[i+0], 2));
-          ang = Math.atan2(v[i+0], v[i+1]);
-          ang += this.rot.z;
-          v[i+1] = d*Math.cos(ang);
-          v[i+0] = d*Math.sin(ang);
-          // APPLY POSITION
-          v[i+0] += this.pos.x;
-          v[i+1] += this.pos.y;
-          v[i+2] += this.pos.z;
-        }
-        return v;
+      while(this.rot.x <= -Math.PI){
+        this.rot.x += Math.PI*2;
       }
-
-      this.getIndexes = () => {
-        return this.indexes;
+      while(this.rot.y >= Math.PI){
+        this.rot.y -= Math.PI*2;
       }
-
-      this.update = bta => {
-        bta.setBuffers(this);
+      while(this.rot.y <= -Math.PI){
+        this.rot.y += Math.PI*2;
       }
+      while(this.rot.z >= Math.PI){
+        this.rot.z -= Math.PI*2;
+      }
+      while(this.rot.z <= -Math.PI){
+        this.rot.z += Math.PI*2;
+      }
+      let v = [].concat(this.vertexes);
+      for(let i = 0; i < v.length; i += 3){
+        // APPLY SCALE
+        v[i+0] *= this.scale.x;
+        v[i+1] *= this.scale.y;
+        v[i+2] *= this.scale.z;
+        // APPLY ROTATION
+        let d, ang;
+        // ROTATION X
+        d = Math.sqrt(Math.pow(v[i+1], 2) + Math.pow(v[i+2], 2));
+        ang = Math.atan2(v[i+1], v[i+2]);
+        ang += this.rot.x;
+        v[i+1] = d*Math.cos(ang);
+        v[i+2] = d*Math.sin(ang);
+        // ROTATION Y
+        d = Math.sqrt(Math.pow(v[i+2], 2) + Math.pow(v[i+0], 2));
+        ang = Math.atan2(v[i+0], v[i+2]);
+        ang += this.rot.y;
+        v[i+2] = d*Math.cos(ang);
+        v[i+0] = d*Math.sin(ang);
+        // ROTATION Z
+        d = Math.sqrt(Math.pow(v[i+1], 2) + Math.pow(v[i+0], 2));
+        ang = Math.atan2(v[i+0], v[i+1]);
+        ang += this.rot.z;
+        v[i+1] = d*Math.cos(ang);
+        v[i+0] = d*Math.sin(ang);
+        // APPLY POSITION
+        v[i+0] += this.pos.x;
+        v[i+1] += this.pos.y;
+        v[i+2] += this.pos.z;
+        // APPLY PROJECTION
+        if(camera){
+          let p = camera.projectVector(new vector(v[i+0], v[i+1], v[i+2]));
+          v[i+0] = p.x;
+          v[i+1] = p.y;
+          v[i+2] = p.z;
+        }
+      }
+      return v;
+    }
 
-      this.readObj = data => {
-        this.vertexes = [];
-        this.indexes = [];
-        let lines = data.split("\n");
-        lines.forEach(line => {
-          if(line.substring(0, 2) == "v "){
-            line.substring(2).split(" ").forEach(value => {
-              this.vertexes.push(Number(value));
-            });
-          }else if(line.substring(0, 2) == "f "){
-            line.substring(2).split(" ").forEach(value => {
-              this.indexes.push(Number(value.split("//")[0])-1);
-            });
-          }
-        });
+    this.getIndexes = () => {
+      return this.indexes;
+    }
+
+    this.generateNormals = () => {
+      this.normals = [];
+      for(let i = 0; i < this.indexes.length; i += 3){
+        let a = new vector(
+          this.vertexes[(this.indexes[i+0]*3)+0],
+          this.vertexes[(this.indexes[i+0]*3)+1],
+          this.vertexes[(this.indexes[i+0]*3)+2]
+        );
+        let b = new vector(
+          this.vertexes[(this.indexes[i+1]*3)+0],
+          this.vertexes[(this.indexes[i+1]*3)+1],
+          this.vertexes[(this.indexes[i+1]*3)+2]
+        );
+        let c = new vector(
+          this.vertexes[(this.indexes[i+2]*3)+0],
+          this.vertexes[(this.indexes[i+2]*3)+1],
+          this.vertexes[(this.indexes[i+2]*3)+2]
+        );
+        let v = a.subtract(b).cross(c.subtract(b)).normalize();
+        this.normals.push(v.x);
+        this.normals.push(v.y);
+        this.normals.push(v.z);
       }
     }
 
-    this.vector = function(x, y, z){
-      this.x = x||0;
-      this.y = y||0;
-      this.z = z||0;
+    this.update = bta => {
+      bta.setBuffers(this);
+    }
 
-      this.add = v => {
-        let ret = new BTA.vector(this.x, this.y, this.z);
-        ret.x += v.x;
-        ret.y += v.y;
-        ret.z += v.z;
-        return ret;
-      }
-      
-      this.cross = v => {
-        let ret = new BTA.vector();
-        ret.x = (this.y*v.z)-(this.z*v.y);
-        ret.y = (this.z*v.x)-(this.x*v.z);
-        ret.z = (this.x*v.y)-(this.y*v.x);
-        return ret;
-      }
+    this.readObj = data => {
+      this.vertexes = [];
+      this.indexes = [];
+      let lines = data.split("\n");
+      lines.forEach(line => {
+        if(line.substring(0, 2) == "v "){
+          line.substring(2).split(" ").forEach(value => {
+            this.vertexes.push(Number(value));
+          });
+        }else if(line.substring(0, 2) == "f "){
+          line.substring(2).split(" ").forEach(value => {
+            this.indexes.push(Number(value.split("//")[0])-1);
+          });
+        }
+      });
+    }
+  }
+
+  this.vector = function(x, y, z){
+    this.x = x||0;
+    this.y = y||0;
+    this.z = z||0;
+
+    this.add = v => {
+      let ret = new vector(this.x, this.y, this.z);
+      ret.x += v.x;
+      ret.y += v.y;
+      ret.z += v.z;
+      return ret;
+    }
+
+    this.subtract = v => {
+      let ret = new vector(this.x, this.y, this.z);
+      ret.x -= v.x;
+      ret.y -= v.y;
+      ret.z -= v.z;
+      return ret;
+    }
+
+    this.multiply = e => {
+      let ret = new vector(this.x, this.y, this.z);
+      ret.x *= e;
+      ret.y *= e;
+      ret.z *= e;
+      return ret;
+    }
+    
+    this.cross = v => {
+      let ret = new vector();
+      ret.x = (this.y*v.z)-(this.z*v.y);
+      ret.y = (this.z*v.x)-(this.x*v.z);
+      ret.z = (this.x*v.y)-(this.y*v.x);
+      return ret;
+    }
+
+    this.magnitude = () => {
+      return Math.sqrt(Math.pow(this.x, 2)+Math.pow(this.y, 2)+Math.pow(this.z, 2));
+    }
+
+    this.normalize = norm => {
+      let n = norm||1;
+      let v = new vector(this.x, this.y, this.z);
+      let m = v.magnitude();
+      v = v.multiply(n/m);
+      return v;
+    }
+  }
+
+  camera = function(){
+    this.pos = new vector();
+    this.dir = new vector(0, 0, 1);
+    this.perspectiveAngle = Math.PI/2;
+    this.ratio = 1;
+
+    this.projectVector = v => {
+      let relativePos = v.subtract(this.pos);
+      let teta = Math.atan2(relativePos.x, relativePos.z);
+      let azimut = Math.atan2(relativePos.x, relativePos.y);
+      let ang = (this.perspectiveAngle/2)/Math.PI;
+      let projectedPos = new vector(Math.cos(teta)/ang, Math.cos(azimut)/ang, v.z);
+      return projectedPos;
     }
   }
 }());

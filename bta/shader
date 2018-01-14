@@ -1,4 +1,12 @@
-attribute vec4 coordinates;
+attribute vec3 coordinates;
+attribute vec3 normals;
+
+uniform vec3 lightDir;
+
+varying lowp float light;
+
 void main() {
-  gl_Position = coordinates;
+  gl_Position = vec4(coordinates.x, coordinates.y, coordinates.z, 1);
+
+  light = length(cross(normals, lightDir));
 }
