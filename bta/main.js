@@ -5,6 +5,7 @@
     this.vertexBuffer = null;
     this.indexBuffer = null;
     this.normalBuffer = null;
+    this.textureBuffer = null;
     this.gl = null;
     this.frame = 0;
     this.fps = 30;
@@ -14,7 +15,7 @@
     this.onShadersLoad = ()=>{};
     this.camera = new camera();
 
-    this.setCanvas = function(canvas){
+    this.setCanvas = canvas => {
       this.canvas = canvas;
       this.canvas.width = $(window).width();
       this.canvas.height = $(window).height();
@@ -23,10 +24,11 @@
       this.vertexBuffer = this.gl.createBuffer();
       this.indexBuffer = this.gl.createBuffer();
       this.normalBuffer = this.gl.createBuffer();
+      this.textureBuffer = this.gl.createBuffer();
       this.updateLoop = setInterval(() => this.update(), 1000/this.fps);
     }
 
-    this.update = function(){
+    this.update = () => {
       this.frame += 1;
       this.updateBinder.forEach(update => {
         update(this);
@@ -42,7 +44,7 @@
       this.updateBinder.push(update);
     }
 
-    this.setBuffers = function(model){
+    this.setBuffers = model => {
       if(!model.program){
         model.program = this.setProgram();  
       }
@@ -57,6 +59,21 @@
       // this.gl.bufferData(this.gl.ARRAY_BUFFER, new Float32Array(model.normals), this.gl.STATIC_DRAW);
       // this.gl.bindBuffer(this.gl.ARRAY_BUFFER, null);
 
+      this.gl.bindBuffer(this.gl.ARRAY_BUFFER, this.textureBuffer);
+
+      let textureCoordinates = [];
+
+      for(let i = 0; i < model.indexes.length/3; i += 1){
+        textureCoordinates = [
+          0.0,  0.0,
+          1.0,  0.0,
+          1.0,  1.0,
+          0.0,  1.0
+        ].concat(textureCoordinates)
+      }
+
+      this.gl.bufferData(this.gl.ARRAY_BUFFER, new Float32Array(textureCoordinates), this.gl.STATIC_DRAW);
+
       this.gl.bindBuffer(this.gl.ELEMENT_ARRAY_BUFFER, this.indexBuffer);
       this.gl.bufferData(this.gl.ELEMENT_ARRAY_BUFFER, new Uint16Array(model.getIndexes()), this.gl.STATIC_DRAW);
       this.gl.bindBuffer(this.gl.ELEMENT_ARRAY_BUFFER, null);
@@ -66,7 +83,7 @@
       $.ajax(url, {complete: (data) => this.setShader(data.responseText, vertex)});
     }
 
-    this.setShader = function(shader, vertex){
+    this.setShader = (shader, vertex) => {
       let t = (vertex)?this.gl.VERTEX_SHADER:this.gl.FRAGMENT_SHADER;
       let s = this.gl.createShader(t);
       this.gl.shaderSource(s, shader);
@@ -79,7 +96,7 @@
       if(this.shaders.length == 2)this.onShadersLoad();
     }
 
-    this.setProgram = function(){
+    this.setProgram = () => {
       let program = this.gl.createProgram();
       this.shaders.forEach(shader => {
         this.gl.attachShader(program, shader);
@@ -92,7 +109,7 @@
       return program;
     }
 
-    this.drawScene = function(){
+    this.drawScene = () => {
       this.gl.clearColor(0.2, 0.3, 0.8, 0.8);
       this.gl.enable(this.gl.DEPTH_TEST);
       this.gl.clear(this.gl.COLOR_BUFFER_BIT);
@@ -100,12 +117,23 @@
       this.world.forEach(obj => {
         obj.update(this);
         //this.gl.bindBuffer(this.gl.ARRAY_BUFFER, this.normalBuffer);
+        this.gl.bindBuffer(this.gl.ARRAY_BUFFER, this.textureBuffer);
         this.gl.bindBuffer(this.gl.ARRAY_BUFFER, this.vertexBuffer);
         this.gl.bindBuffer(this.gl.ELEMENT_ARRAY_BUFFER, this.indexBuffer);
+
+        this.gl.activeTexture(this.gl.TEXTURE0);
+        this.gl.bindTexture(this.gl.TEXTURE_2D, obj.texture);
 
         let coord = this.gl.getAttribLocation(obj.program, "coordinates");
         this.gl.vertexAttribPointer(coord, 3, this.gl.FLOAT, false, 0, 0);
         this.gl.enableVertexAttribArray(coord);
+
+        let textureCoord = this.gl.getAttribLocation(obj.program, 'aTextureCoord');
+        this.gl.vertexAttribPointer(textureCoord, 2, this.gl.FLOAT, false, 0, 0);
+        this.gl.enableVertexAttribArray(textureCoord);
+
+        let uSampler = this.gl.getUniformLocation(obj.program, 'uSampler');
+        this.gl.uniform1i(uSampler, 0);
 
         // let normals = this.gl.getAttribLocation(obj.program, "normals");
         // this.gl.vertexAttribPointer(normals, 3, this.gl.FLOAT, false, 0, 0);
@@ -127,6 +155,7 @@
     this.rot = new vector();
     this.program;
     this.normals;
+    this.texture;
     this.onLoad = ()=>{};
 
     this.loadObj = url => {
@@ -245,6 +274,49 @@
           });
         }
       });
+    }
+
+    this.loadTexture = (url, gl) => {
+      const texture = gl.createTexture();
+      gl.bindTexture(gl.TEXTURE_2D, texture);
+      const level = 0;
+      const internalFormat = gl.RGBA;
+      const width = 1;
+      const height = 1;
+      const border = 0;
+      const srcFormat = gl.RGBA;
+      const srcType = gl.UNSIGNED_BYTE;
+      const pixel = new Uint8Array([0, 0, 255, 255]);  // opaque blue
+      gl.texImage2D(gl.TEXTURE_2D, level, internalFormat,
+                    width, height, border, srcFormat, srcType,
+                    pixel);
+    
+      const image = new Image();
+      var that = this;
+      image.onload = function() {
+        gl.bindTexture(gl.TEXTURE_2D, texture);
+        gl.texImage2D(gl.TEXTURE_2D, level, internalFormat, srcFormat, srcType, image);
+
+        console.log("Loaded texture");
+
+        if (that.isPowerOf2(image.width) && that.isPowerOf2(image.height)) {
+          console.log("Is power of 2!");
+          gl.generateMipmap(gl.TEXTURE_2D);
+        } else {
+          console.log("Isn't power of 2!");
+          gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+          gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+          gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+        }
+      };
+      image.src = url;
+    
+      this.texture = texture;
+      console.log(this.texture);
+    }
+
+    this.isPowerOf2 = value => {
+      return (value & (value - 1)) == 0;
     }
   }
 
